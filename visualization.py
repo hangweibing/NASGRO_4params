@@ -88,11 +88,10 @@ def plot_particle_parameters_evolution(csv_filename, n_particles, save_dir='.', 
         print(f"警告：CSV文件 {csv_filename} 不存在，跳过可视化")
         return
 
-    # 读取CSV文件（第一行是列标题）
+    # 读取CSV文件
     try:
-        data = pd.read_csv(csv_filename, header=0)
+        data = pd.read_csv(csv_filename)
         total_rows = len(data)
-        print(f"成功读取CSV文件: {total_rows} 行数据")
     except Exception as e:
         print(f"读取CSV文件失败: {e}")
         return
@@ -117,9 +116,6 @@ def plot_particle_parameters_evolution(csv_filename, n_particles, save_dir='.', 
             start_row = step * n_particles
             end_row = min((step + 1) * n_particles, total_rows)
 
-            # 输出当前时间步的起始行数和终止行数
-            print(f"时间步 {step}: 起始行数 = {start_row}, 终止行数 = {end_row - 1}, 记录参数 = {param_name}")
-
             # 获取当前步骤的参数值
             param_values = data[param_name].iloc[start_row:end_row].values
 
@@ -141,6 +137,10 @@ def plot_particle_parameters_evolution(csv_filename, n_particles, save_dir='.', 
 
         # 添加网格
         ax.grid(True, alpha=0.3)
+
+    # 添加图例（只在第一个子图显示，避免重复）
+    if n_steps <= 5:
+        axes[0].legend(loc='upper right', fontsize=10)
 
     plt.tight_layout()
     output_file = f'{save_dir}/particle_params_evolution.png'
