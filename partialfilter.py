@@ -53,7 +53,8 @@ class ParticleFilter():
 
         # 加载观测数据文件（用于参数更新的基准数据）
         # 文件格式：第一列为循环数，第二列为观测的裂纹长度
-        check = np.loadtxt('%d.csv' % load[0], dtype=float, delimiter=',', encoding='UTF-8')
+        # check = np.loadtxt('%d.csv' % load[0], dtype=float, delimiter=',', encoding='UTF-8')  # 注释：原来加载1.csv等文件
+        check = np.loadtxt('ground_truth.csv', dtype=float, delimiter=',', encoding='UTF-8')  # 修改：加载ground_truth.csv
 
         # 创建观测数据插值函数（3次样条插值）
         # 用于根据循环数获取对应的观测裂纹长度

@@ -24,7 +24,10 @@ from particle_initialization import init_uncertain_param_lhs, init_uncertain_par
 MODE = 'NASGRO'
 
 # 粒子初始化方法：'tf' 使用TensorFlow内置随机采样, 'lhs' 使用拉丁超立方采样
-INIT_METHOD = 'tf'
+INIT_METHOD = 'lhs'
+
+# 结果输出目录
+RESULTS_DIR = 'results'
 
 # 粒子数量与可靠性指标设置
 # NPARTICLE: 粒子总数
@@ -46,14 +49,14 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # safe_factor: 安全系数
 # width: 板材宽度 (mm)
 # load: 载荷参数 [均值, 标准差]
-# stress: 应力参数 [均值, 标准差]
+# stress: 应力参数（确定值）
 # length: 初始裂纹长度参数 [均值, 标准差, 偏移]
 Kc = 50
 safe_factor = 2
 width = 50
 load = [1, 0.1]
-stress = [load[0], 0]
-length = [0.01, 0.001, 1.27]
+stress = load[0]  # 确定性应力值
+length = [0.01, 0.01, 1.27]
 
 # 材料参数字典，包含PARIS和NASGRO两种模型的参数
 # 'N' 表示正态分布参数格式: [均值, 标准差] 或 [均值, 标准差, 偏移]
@@ -67,7 +70,7 @@ paramDict = {
         'D': [2e-9, 8e-10],         # NASGRO方程常数D [均值, 标准差]
         'p': [1.2, 0.05],            # NASGRO方程指数p [均值, 标准差]
         'dKthr': [7.23, 0.5],        # 阈值应力强度因子范围 [均值, 标准差]
-        'A': [74.1, 5.0],            # 断裂韧度参数 [均值, 标准差]
+        'A': [74.1, 2.0],            # 断裂韧度参数 [均值, 标准差]
         '_uncertainParam': {'D': 'N', 'p': 'N', 'dKthr': 'N', 'A': 'N', 'crack_length': 'N'}  # 不确定参数分布类型
     }
 }
@@ -132,7 +135,7 @@ class CrackGrowth():
         # 时间戳记录，用于性能监控
         self.start = tf.timestamp()
 
-    def log_particle_params(self, filename='particle_params.csv'):
+    def log_particle_params(self, filename=None):
         """
         记录所有粒子的参数状态到CSV文件
 
@@ -141,9 +144,14 @@ class CrackGrowth():
         每次调用时在文件末尾追加新的数据。
 
         参数:
-            filename: CSV文件名，默认为'particle_params.csv'
+            filename: CSV文件名，如果为None则使用默认路径
         """
         import csv
+        import os
+
+        # 设置默认文件名
+        if filename is None:
+            filename = os.path.join(RESULTS_DIR, 'particle_params.csv')
         import os
 
         # 获取当前所有粒子的参数值
@@ -232,7 +240,7 @@ class CrackGrowth():
                 exec('self.%s=tf.constant(kwargs["value"], dtype=self.dtype)' % (param))
             else:
                 # 创建不确定参数变量（随机采样）
-                exec('self.%s=self.setUncertainParam(dist, kwargs["value"])' % (param))
+                exec('self.%s=self.setUncertainParam(dist, kwargs["value"], param)' % (param))
         else:
             raise KeyError("参数 '%s' 不在允许的参数列表中" % param)
     def getParam(self, param=''):
@@ -250,7 +258,7 @@ class CrackGrowth():
         else:
             raise KeyError("参数 '%s' 不在允许的参数列表中" % param)
 
-    def setUncertainParam(self, dist, value):
+    def setUncertainParam(self, dist, value, param_name=None):
         """
         对不确定参数进行随机采样初始化
 
@@ -266,14 +274,15 @@ class CrackGrowth():
         参数:
             dist: 分布类型 ('N'正态分布 或 'U'均匀分布)
             value: 分布参数列表
+            param_name: 参数名称，用于特殊处理（如D参数的对数变换）
 
         返回:
             TensorFlow Variable，包含随机采样的参数值
         """
         if INIT_METHOD == 'lhs':
-            return init_uncertain_param_lhs(self.shape, self.dtype, dist, value)
+            return init_uncertain_param_lhs(self.shape, self.dtype, dist, value, param_name)
         else:
-            return init_uncertain_param_tf(self.shape, self.dtype, dist, value)
+            return init_uncertain_param_tf(self.shape, self.dtype, dist, value, param_name)
     def summary(self):
         """
         执行单步统计和日志记录
@@ -373,7 +382,7 @@ class CrackGrowth():
                 # 准备输出数据：计算统计量
                 t_ = self.crack_length_history_CPU.copy()
                 t_.sort(axis=-1)  # 按裂纹长度排序
-                
+
                 # 创建输出数组：
                 t = np.vstack((
                     np.arange(1, t_.shape[0]),           # 循环数
@@ -383,7 +392,8 @@ class CrackGrowth():
                 )).T
 
                 # 保存结果到CSV文件
-                np.savetxt('%s_%d.csv' % (MODE, load[0]), t, delimiter=',')
+                result_filename = os.path.join(RESULTS_DIR, '%s_%d.csv' % (MODE, load[0]))
+                np.savetxt(result_filename, t, delimiter=',')
 
                 # 执行粒子滤波更新参数
                 self.crack_length_95 = self.check.check()
@@ -393,13 +403,13 @@ class CrackGrowth():
 
                 # 更新参数分布可视化
                 from visualization import plot_particle_parameters_evolution
-                plot_particle_parameters_evolution('particle_params.csv', NPARTICLE)
+                plot_particle_parameters_evolution(os.path.join(RESULTS_DIR, 'particle_params.csv'), NPARTICLE, save_dir=RESULTS_DIR)
 
                 # 增加更新计数器
                 update_count += 1
 
                 # 绘制当前预测效果
-                filename = '%s_%d.csv' % (MODE, load[0])
+                filename = os.path.join(RESULTS_DIR, '%s_%d.csv' % (MODE, load[0]))
                 plot_crack_length_prediction(t, filename, update_count)
 
                 # 重置超限计数器
@@ -430,18 +440,28 @@ def main():
     # 设置模型参数字典（自动区分确定参数和不确定参数）
     cg.setParamDict(paramDict=paramDict[MODE])
 
+    # 确保results目录存在
+    import os
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    # 删除之前的CSV文件，避免数据叠加
+    csv_filename = os.path.join(RESULTS_DIR, 'particle_params.csv')
+    if os.path.exists(csv_filename):
+        os.remove(csv_filename)
+        print(f"已删除之前的文件: {csv_filename}")
+
     # 记录初始粒子参数状态
     cg.log_particle_params()
 
     # 生成初始参数分布可视化
     from visualization import plot_particle_parameters_evolution
-    plot_particle_parameters_evolution('particle_params.csv', NPARTICLE)
+    plot_particle_parameters_evolution(os.path.join(RESULTS_DIR, 'particle_params.csv'), NPARTICLE, save_dir=RESULTS_DIR)
 
     # 单独设置其他参数
     # 初始裂纹长度：正态分布 [均值, 标准差, 偏移]
     cg.setParam(param='crack_length', dist='N', value=length)
-    # 应力范围：正态分布
-    cg.setParam(param='dSigma', dist='N', value=stress)
+    # 应力范围：确定参数
+    cg.setParam(param='dSigma', dist='single', value=stress)
     # 板宽：确定参数
     cg.setParam(param='b', dist='single', value=50)
 
@@ -455,6 +475,7 @@ def main():
 
 
 # ------------------------------ 程序入口 ------------------------------
+
 if __name__ == '__main__':
     main()
 
