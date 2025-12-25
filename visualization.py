@@ -5,6 +5,8 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.stats import gaussian_kde
 
 
 def plot_crack_length_prediction(data, filename, step_count):
@@ -146,6 +148,102 @@ def plot_particle_parameters_evolution(csv_filename, n_particles, save_dir='.', 
     output_file = f'{save_dir}/particle_params_evolution.png'
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"粒子参数演化图已保存: {output_file}")
+    plt.close()
+
+
+def plot_particle_parameters_evolution_3d(csv_filename, n_particles, save_dir='.', param_names=None):
+    import pandas as pd
+    import os
+    from matplotlib import cm
+
+    if param_names is None:
+        param_names = ['D', 'p', 'dKthr', 'A']
+
+    if not os.path.exists(csv_filename):
+        print(f"警告：CSV文件 {csv_filename} 不存在，跳过可视化")
+        return
+
+    try:
+        data = pd.read_csv(csv_filename)
+        total_rows = len(data)
+    except Exception as e:
+        print(f"读取CSV文件失败: {e}")
+        return
+
+    n_steps = total_rows // n_particles
+    if n_steps == 0:
+        print(f"警告：CSV文件行数({total_rows})少于粒子数({n_particles})，跳过可视化")
+        return
+
+    fig = plt.figure(figsize=(18, 14))
+    fig.patch.set_facecolor('white')
+    
+    colors = cm.viridis(np.linspace(0, 1, n_steps))
+
+    for param_idx in range(min(len(param_names), 4)):
+        ax = fig.add_subplot(2, 2, param_idx + 1, projection='3d')
+        param_name = param_names[param_idx]
+
+        for step in range(n_steps):
+            start_row = step * n_particles
+            end_row = min((step + 1) * n_particles, total_rows)
+            param_values = data[param_name].iloc[start_row:end_row].values
+
+            if len(param_values) > 5:
+                try:
+                    kde = gaussian_kde(param_values)
+                    y_grid = np.linspace(np.min(param_values), np.max(param_values), 100)
+                    z_values = kde(y_grid)
+
+                    x_vals = np.full_like(y_grid, step)
+                    
+                    ax.plot(x_vals, y_grid, z_values, color=colors[step], 
+                           alpha=0.85, linewidth=2.5, zorder=step)
+                    
+                    ax.plot(x_vals, y_grid, np.zeros_like(z_values), 
+                           color=colors[step], alpha=0.15, linewidth=1, zorder=0)
+                    
+                    vertices = [(x_vals[0], y_grid[0], 0)] + \
+                              list(zip(x_vals, y_grid, z_values)) + \
+                              [(x_vals[-1], y_grid[-1], 0)]
+                    from matplotlib.patches import Polygon
+                    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+                    
+                    verts = [list(zip(x_vals, y_grid, z_values))]
+                    poly = Poly3DCollection(verts, alpha=0.25, facecolor=colors[step], 
+                                           edgecolor='none', zorder=step)
+                    ax.add_collection3d(poly)
+                    
+                except:
+                    pass
+
+        ax.set_xlabel('Update Step', fontsize=12, fontweight='bold', labelpad=10)
+        ax.set_ylabel(f'{param_name}', fontsize=12, fontweight='bold', labelpad=10)
+        ax.set_zlabel('Probability Density', fontsize=12, fontweight='bold', labelpad=10)
+        ax.set_title(f'{param_name} Parameter Evolution', fontsize=14, fontweight='bold', pad=15)
+        
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+        ax.xaxis.pane.set_edgecolor('gray')
+        ax.yaxis.pane.set_edgecolor('gray')
+        ax.zaxis.pane.set_edgecolor('gray')
+        ax.xaxis.pane.set_alpha(0.1)
+        ax.yaxis.pane.set_alpha(0.1)
+        ax.zaxis.pane.set_alpha(0.1)
+        
+        ax.grid(True, linestyle='--', alpha=0.3, linewidth=0.5)
+        ax.tick_params(labelsize=10)
+        ax.view_init(elev=20, azim=45)
+        
+        ax.xaxis._axinfo['tick']['inward_factor'] = 0
+        ax.yaxis._axinfo['tick']['inward_factor'] = 0
+        ax.zaxis._axinfo['tick']['inward_factor'] = 0
+
+    plt.tight_layout(pad=3.0)
+    output_file = f'{save_dir}/particle_params_evolution_3d.png'
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+    print(f"粒子参数3D演化图已保存: {output_file}")
     plt.close()
 
 
