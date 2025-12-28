@@ -1,13 +1,8 @@
 # ------------------------------ 导入模块 ------------------------------
 import numpy as np
 import tensorflow as tf
-from scipy.interpolate import interp1d
 import os
-import tensorflow as tf
-import matplotlib.pyplot as plt
 
-# 导入应力强度因子计算模块
-from stress_intensity_factor import calc_K_for_tip
 # 导入裂纹扩展模型模块
 from crack_growth_models import predict_NASGRO_tf, predict_PARIS_tf
 # 导入可视化模块
@@ -15,17 +10,14 @@ from visualization import plot_crack_length_prediction
 # 导入粒子初始化模块
 from particle_initialization import init_uncertain_param_lhs, init_uncertain_param_tf
 # 导入参数配置文件
-from config import *
+import config
+# 导入真实数据生成函数
+from 裂纹长度检查数据生成.generate_ground_truth import generate_ground_truth_data
 
+# ------------------------------ 计算资源配置 ------------------------------
+# 设置CUDA_VISIBLE_DEVICES
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-
-
-# ------------------------------ 裂纹扩展模型方程 ------------------------------
-
-
-
-
-# 裂纹扩展预测函数已移至 crack_growth_models.py 模块
 # ------------------------------ 裂纹扩展主类 ------------------------------
 
 class CrackGrowth():
@@ -92,12 +84,10 @@ class CrackGrowth():
             filename: CSV文件名，如果为None则使用默认路径
         """
         import csv
-        import os
 
         # 设置默认文件名
         if filename is None:
-            filename = os.path.join(RESULTS_DIR, 'particle_params.csv')
-        import os
+            filename = os.path.join(config.RESULTS_DIR, 'particle_params.csv')
 
         # 获取当前所有粒子的参数值
         D_vals = self.D.numpy().flatten()
@@ -224,7 +214,7 @@ class CrackGrowth():
         返回:
             TensorFlow Variable，包含随机采样的参数值
         """
-        if INIT_METHOD == 'lhs':
+        if config.INIT_METHOD == 'lhs':
             return init_uncertain_param_lhs(self.shape, self.dtype, dist, value, param_name)
         else:
             return init_uncertain_param_tf(self.shape, self.dtype, dist, value, param_name)
@@ -307,12 +297,12 @@ class CrackGrowth():
 
             # 初始化GPU历史记录
             self.crack_length_history_GPU = self.crack_length
-            maxcount = tf.constant(MAXCOUNT, dtype='int64')
+            maxcount = tf.constant(config.MAXCOUNT, dtype='int64')
 
             # 初始化参数更新计数器
             update_count = 0
 
-            # 外循环：继续直到97.5%置信度裂纹长度达到临界值 12.5mm
+            # 外循环：继续直到97.5%置信度裂纹长度达到临界值
             while self.crack_length_95 < self.crack_limit:
 
                 # 内循环：继续直到超限粒子数达到阈值
@@ -330,13 +320,13 @@ class CrackGrowth():
                 # 创建输出数组：
                 t = np.vstack((
                     np.arange(1, t_.shape[0]),           # 循环数
-                    t_[1:, MAXCOUNT],
+                    t_[1:, config.MAXCOUNT],
                     np.average(t_[1:], axis=-1),
-                    t_[1:, t_.shape[-1] - MAXCOUNT]
+                    t_[1:, t_.shape[-1] - config.MAXCOUNT]
                 )).T
 
                 # 保存结果到CSV文件
-                result_filename = os.path.join(RESULTS_DIR, '%s_%d.csv' % (MODE, load[0]))
+                result_filename = os.path.join(config.RESULTS_DIR, '%s_%d.csv' % (config.MODE, config.load[0]))
                 np.savetxt(result_filename, t, delimiter=',')
 
                 # 执行粒子滤波更新参数
@@ -347,13 +337,15 @@ class CrackGrowth():
 
                 # 更新参数分布可视化
                 from visualization import plot_particle_parameters_evolution_3d
-                plot_particle_parameters_evolution_3d(os.path.join(RESULTS_DIR, 'particle_params.csv'), NPARTICLE, save_dir=RESULTS_DIR)
+                # 提取真实参数值用于可视化对比
+                true_params = {param: config.ground_truth_params[param] for param in ['D', 'p', 'dKthr', 'A'] if param in config.ground_truth_params}
+                plot_particle_parameters_evolution_3d(os.path.join(config.RESULTS_DIR, 'particle_params.csv'), config.NPARTICLE, save_dir=config.RESULTS_DIR, true_params=true_params)
 
                 # 增加更新计数器
                 update_count += 1
 
                 # 绘制当前预测效果
-                filename = os.path.join(RESULTS_DIR, '%s_%d.csv' % (MODE, load[0]))
+                filename = os.path.join(config.RESULTS_DIR, '%s_%d.csv' % (config.MODE, config.load[0]))
                 plot_crack_length_prediction(t, filename, update_count)
 
                 # 重置超限计数器
@@ -370,26 +362,36 @@ def main():
     主程序入口
 
     执行完整的疲劳裂纹扩展模拟：
-    1. 初始化CrackGrowth模拟器
-    2. 设置模型参数（确定参数和不确定参数）
-    3. 运行模拟循环
-    4. 自动保存结果到CSV文件
+    1. 生成真实裂纹扩展数据（ground_truth.csv）
+    2. 初始化CrackGrowth模拟器
+    3. 设置模型参数（确定参数和不确定参数）
+    4. 运行模拟循环
+    5. 自动保存结果到CSV文件
     """
+    # 第一步：生成真实裂纹扩展数据
+    print("=== 第一步：生成真实裂纹扩展数据 ===")
+    ground_truth_file = 'ground_truth.csv'
+    if os.path.exists(ground_truth_file):
+        print(f"真实数据文件已存在: {ground_truth_file}")
+        print("如果需要重新生成，请先删除该文件")
+    else:
+        generate_ground_truth_data(config.ground_truth_params, ground_truth_file)
+
+    print("\n=== 第二步：初始化裂纹扩展模拟器 ===")
     # 初始化裂纹扩展模拟器
     # mode: 模型类型 (PARIS/NASGRO)
     # crack_limit: 裂纹临界长度 (25/2 = 12.5mm)
     # shape: 张量形状 [1, NPARTICLE] 表示单批次，NPARTICLE个粒子
-    cg = CrackGrowth(mode=MODE, crack_limit=crack_limit, shape=tf.TensorShape([1, NPARTICLE]))
+    cg = CrackGrowth(mode=config.MODE, crack_limit=config.crack_limit, shape=tf.TensorShape([1, config.NPARTICLE]))
 
     # 设置模型参数字典（自动区分确定参数和不确定参数）
-    cg.setParamDict(paramDict=paramDict[MODE])
+    cg.setParamDict(paramDict=config.paramDict[config.MODE])
 
     # 确保results目录存在
-    import os
-    os.makedirs(RESULTS_DIR, exist_ok=True)
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
 
     # 删除之前的CSV文件，避免数据叠加
-    csv_filename = os.path.join(RESULTS_DIR, 'particle_params.csv')
+    csv_filename = os.path.join(config.RESULTS_DIR, 'particle_params.csv')
     if os.path.exists(csv_filename):
         os.remove(csv_filename)
         print(f"已删除之前的文件: {csv_filename}")
@@ -399,13 +401,15 @@ def main():
 
     # 生成初始参数分布可视化
     from visualization import plot_particle_parameters_evolution_3d
-    plot_particle_parameters_evolution_3d(os.path.join(RESULTS_DIR, 'particle_params.csv'), NPARTICLE, save_dir=RESULTS_DIR)
+    # 提取真实参数值用于可视化对比
+    true_params = {param: config.ground_truth_params[param] for param in ['D', 'p', 'dKthr', 'A'] if param in config.ground_truth_params}
+    plot_particle_parameters_evolution_3d(os.path.join(config.RESULTS_DIR, 'particle_params.csv'), config.NPARTICLE, save_dir=config.RESULTS_DIR, true_params=true_params)
 
     # 单独设置其他参数
     # 初始裂纹长度：正态分布 [均值, 标准差, 偏移]
-    cg.setParam(param='crack_length', dist='N', value=length)
+    cg.setParam(param='crack_length', dist='N', value=config.length)
     # 应力范围：确定参数
-    cg.setParam(param='dSigma', dist='single', value=stress)
+    cg.setParam(param='dSigma', dist='single', value=config.stress)
     # 板宽：确定参数
     cg.setParam(param='b', dist='single', value=50)
 

@@ -7,7 +7,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 # ================================= 导主程序 =================================
-from DT_2D_tf_fn_4param import paramDict, NPARTICLE, MODE, load
+import config
 # =============================================================================
 
 
@@ -19,13 +19,13 @@ n = 5  # 空间维度
 v_sphere = 1
 
 # 测量噪声方差（观测误差）
-R = 0.01
+R = 0.1
 
 # 正则化参数A（基于空间维度和球体积计算）
 A = (8 / v_sphere * (n + 4) * (2 * tf.sqrt(pi)) ** n) ** (1 / (n + 4))
 
 # 平滑带宽h（自适应带宽，基于粒子数量）
-h = A * NPARTICLE ** (-1 / (n + 4))
+h = A * config.NPARTICLE ** (-1 / (n + 4))
 # ------------------------------ 粒子滤波器类 ------------------------------
 
 class ParticleFilter():
@@ -47,14 +47,14 @@ class ParticleFilter():
         self.growth = growth
 
         # 获取不确定参数列表（需要通过粒子滤波更新的参数）
-        self.checkParamList = paramDict[MODE]['_uncertainParam'].keys()
+        self.checkParamList = config.paramDict[config.MODE]['_uncertainParam'].keys()
 
         # 检查计数器初始化
         self.Ncheck = 0
 
         # 加载观测数据文件（用于参数更新的基准数据）
         # 文件格式：第一列为循环数，第二列为观测的裂纹长度
-        # check = np.loadtxt('%d.csv' % load[0], dtype=float, delimiter=',', encoding='UTF-8')  # 注释：原来加载1.csv等文件
+        # check = np.loadtxt('%d.csv' % config.load[0], dtype=float, delimiter=',', encoding='UTF-8')  # 注释：原来加载1.csv等文件
         check = np.loadtxt('ground_truth.csv', dtype=float, delimiter=',', encoding='UTF-8')  # 修改：加载ground_truth.csv
 
         # 创建观测数据插值函数（3次样条插值）
@@ -141,8 +141,8 @@ class ParticleFilter():
                 outindex: 重采样后的粒子索引
             """
             c = np.cumsum(w)  # 计算累积权重分布
-            outindex = np.zeros(NPARTICLE, dtype=int)
-            for i in range(NPARTICLE):
+            outindex = np.zeros(config.NPARTICLE, dtype=int)
+            for i in range(config.NPARTICLE):
                 # 随机选择一个权重值，找到对应的粒子索引
                 outindex[i] = np.where(np.random.rand() <= c)[0][0]
             return outindex
@@ -223,7 +223,7 @@ class ParticleFilter():
         # self.xp = self.xp.T  # 可选：调整数组方向
 
         # 遍历所有粒子，计算协方差矩阵
-        for i in range(NPARTICLE):
+        for i in range(config.NPARTICLE):
             Xp_cov = Xp_cov + weight[i] * np.matmul(
                 np.array([self.xp[:, i] - Xpf]).T,
                 np.array([self.xp[:, i] - Xpf])
@@ -251,7 +251,7 @@ class ParticleFilter():
             D[i] = np.sqrt(Xp_cov[i][i])
 
             # 生成核密度扰动
-            kernelsampling(NPARTICLE, e[i])
+            kernelsampling(config.NPARTICLE, e[i])
 
             # 应用正则化：重采样参数 + 核密度扰动
             self.xp[i] = Xp_resample[i] + h * D[i] * e[i]
@@ -263,7 +263,7 @@ class ParticleFilter():
         self.xphistory.append(self.xp)
 
         # 对所有粒子的裂纹长度参数进行排序，取97.5%分位数
-        length_95 = np.sort(self.xp.T[:, index].copy())[int(0.975 * NPARTICLE)]
+        length_95 = np.sort(self.xp.T[:, index].copy())[int(0.975 * config.NPARTICLE)]
 
         return length_95
     def check(self):

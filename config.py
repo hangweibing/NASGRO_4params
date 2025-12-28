@@ -3,8 +3,6 @@
 包含所有可配置的参数设置
 """
 
-import os
-
 # ------------------------------ 全局参数设置 ------------------------------
 # 模型选择：'PARIS' 或 'NASGRO'
 MODE = 'NASGRO'
@@ -19,16 +17,14 @@ RESULTS_DIR = 'results'
 # NPARTICLE: 粒子总数
 # reliability_rate: 可靠性指标阈值
 # MAXCOUNT: 最大允许超限粒子数
-NPARTICLE = int(1E4)
+NPARTICLE = int(1E3)
 reliability_rate = 0.025
 MAXCOUNT = int(NPARTICLE * reliability_rate)
 
 # ------------------------------ 计算资源配置 ------------------------------
 # CPU计算开关设置
 # 注意：粒子数量超过1e7后请勿在一般电脑上使用CPU计算
-# 如需强制使用CPU，请取消下面的注释
-# os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# CUDA_VISIBLE_DEVICES在主程序中设置，避免导入冲突
 
 # ------------------------------ 材料与载荷参数定义 ------------------------------
 # Kc: 断裂韧度 (MPa*m^0.5)
@@ -58,9 +54,23 @@ paramDict = {
     },
     'NASGRO': {
         'D': [2e-9, 8e-10],         # NASGRO方程常数D [均值, 标准差]
-        'p': [1.2, 0.05],            # NASGRO方程指数p [均值, 标准差]
+        'p': [1.2, 0.08],            # NASGRO方程指数p [均值, 标准差]
         'dKthr': [7.23, 0.5],        # 阈值应力强度因子范围 [均值, 标准差]
-        'A': [74.1, 2.0],            # 断裂韧度参数 [均值, 标准差]
+        'A': [74.1, 3],            # 断裂韧度参数 [均值, 标准差]
         '_uncertainParam': {'D': 'N', 'p': 'N', 'dKthr': 'N', 'A': 'N', 'crack_length': 'N'}  # 不确定参数分布类型
     }
+}
+
+# ------------------------------ 真实数据生成参数 ------------------------------
+# 用于生成ground_truth.csv的真实裂纹扩展数据
+ground_truth_params = {
+    'D': 1.5e-9,        # NASGRO常数D
+    'p': 1.0,         # NASGRO指数p
+    'dKthr': 6.5,    # 阈值应力强度因子范围
+    'A': 79.1,        # 断裂韧度参数
+    'dSigma': 1.0,    # 应力范围
+    'b': 50,          # 板宽
+    'a0': 1.07,        # 初始裂纹长度
+    'target_length': 50.0,  # 目标裂纹长度
+    'record_interval': 10000  # 记录间隔步数
 }

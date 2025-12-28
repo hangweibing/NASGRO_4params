@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.stats import gaussian_kde
+from scipy.interpolate import interp1d  # 导入插值函数
+import os
 
 
 def plot_crack_length_prediction(data, filename, step_count):
@@ -24,6 +26,20 @@ def plot_crack_length_prediction(data, filename, step_count):
     mean = data[:, 2]             # 均值
     percentile_97_5 = data[:, 3]  # 97.5%分位数
 
+    # --- 获取真实数据 ---
+    ground_truth_file = 'ground_truth.csv'
+    gt_crack_length = None
+    if os.path.exists(ground_truth_file):
+        try:
+            # 加载真实数据：第一列为循环数，第二列为裂纹长度
+            gt_data = np.loadtxt(ground_truth_file, delimiter=',')
+            # 创建三次样条插值函数
+            interp_func = interp1d(gt_data[:, 0], gt_data[:, 1], kind='cubic', fill_value="extrapolate")
+            # 在预测的时间步上获取真实值
+            gt_crack_length = interp_func(cycles)
+        except Exception as e:
+            print(f"加载或处理真实数据时出错: {e}")
+
     # 创建图形
     plt.figure(figsize=(12, 7))
 
@@ -36,7 +52,11 @@ def plot_crack_length_prediction(data, filename, step_count):
     plt.plot(cycles, percentile_97_5, '--', color='blue', linewidth=1.5, alpha=0.7, label='97.5% Percentile')
 
     # 绘制均值线（主曲线）
-    plt.plot(cycles, mean, '-', color='red', linewidth=2.5, label='Mean')
+    plt.plot(cycles, mean, '-', color='red', linewidth=2.5, label='Predicted Mean')
+
+    # 绘制真实数据曲线
+    if gt_crack_length is not None:
+        plt.plot(cycles, gt_crack_length, 'k-', linewidth=2, label='Ground Truth')
 
     # 设置标签
     plt.xlabel('Loading Cycles', fontsize=14, fontweight='bold')
@@ -151,7 +171,7 @@ def plot_particle_parameters_evolution(csv_filename, n_particles, save_dir='.', 
     plt.close()
 
 
-def plot_particle_parameters_evolution_3d(csv_filename, n_particles, save_dir='.', param_names=None):
+def plot_particle_parameters_evolution_3d(csv_filename, n_particles, save_dir='.', param_names=None, true_params=None):
     import pandas as pd
     import os
     from matplotlib import cm
@@ -216,6 +236,14 @@ def plot_particle_parameters_evolution_3d(csv_filename, n_particles, save_dir='.
                     
                 except:
                     pass
+
+        # 添加真实参数值的竖直虚线
+        if true_params is not None and param_name in true_params:
+            true_value = true_params[param_name]
+            # 在整个时间范围内绘制真实值的竖直线
+            for step in range(n_steps):
+                ax.plot([step, step], [true_value, true_value], [0, ax.get_zlim()[1]],
+                       color='red', linestyle='--', linewidth=2, alpha=0.8, zorder=100)
 
         ax.set_xlabel('Update Step', fontsize=12, fontweight='bold', labelpad=10)
         ax.set_ylabel(f'{param_name}', fontsize=12, fontweight='bold', labelpad=10)

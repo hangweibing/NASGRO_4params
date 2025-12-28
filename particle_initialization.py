@@ -17,8 +17,7 @@ def lhs_normal_sampling(n_samples, mean, std):
     
     # 防止极端值：将范围限制在[1e-10, 1-1e-10]之间
     # 避免norm.ppf(0)=-inf和norm.ppf(1)=+inf的情况
-    lhs_samples = np.clip(lhs_samples, 1e-10, 1-1e-10)
-
+    lhs_samples = np.clip(lhs_samples, 1e-8, 1-1e-8)
     normal_samples = norm.ppf(lhs_samples, loc=mean, scale=std)
     
     return normal_samples
