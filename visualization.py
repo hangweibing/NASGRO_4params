@@ -11,7 +11,7 @@ from scipy.interpolate import interp1d  # 导入插值函数
 import os
 
 
-def plot_crack_length_prediction(data, filename, step_count):
+def plot_crack_length_prediction(data, filename, step_count, observations=None):
     """
     绘制裂纹长度预测结果
 
@@ -19,6 +19,7 @@ def plot_crack_length_prediction(data, filename, step_count):
         data: 裂纹长度数据 [循环数, 2.5%分位数, 均值, 97.5%分位数]
         filename: 保存的文件名
         step_count: 当前步数，用于标题显示
+        observations: 观测值列表，格式为 [(cycle, length), ...] (可选)
     """
     # 提取数据
     cycles = data[:, 0]           # 循环数
@@ -57,6 +58,13 @@ def plot_crack_length_prediction(data, filename, step_count):
     # 绘制真实数据曲线
     if gt_crack_length is not None:
         plt.plot(cycles, gt_crack_length, 'k-', linewidth=2, label='Ground Truth')
+
+    # 绘制观测点（带噪声）
+    if observations is not None and len(observations) > 0:
+        obs_cycles = [obs[0] for obs in observations]
+        obs_lengths = [obs[1] for obs in observations]
+        plt.scatter(obs_cycles, obs_lengths, marker='D', s=50, c='orange',
+                   edgecolors='black', linewidths=1.5, zorder=5, label='Observations (with noise)')
 
     # 设置标签
     plt.xlabel('Loading Cycles', fontsize=14, fontweight='bold')

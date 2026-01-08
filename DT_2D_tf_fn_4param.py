@@ -313,7 +313,27 @@ class CrackGrowth():
                 if True:  # 总是执行
                     self.log_to_cpu()
 
-                # 准备输出数据：计算统计量
+                # 执行粒子滤波更新参数
+                self.crack_length_95 = self.check.check()
+
+                # 将更新后的裂纹长度记录到历史中
+                # 更新CPU历史的最后一行（当前时间步）为滤波后的裂纹长度
+                if hasattr(self, 'crack_length_history_CPU'):
+                    self.crack_length_history_CPU[-1] = self.crack_length.numpy().flatten()
+
+                # 记录更新后的粒子参数状态
+                self.log_particle_params()
+
+                # 更新参数分布可视化
+                from visualization import plot_particle_parameters_evolution_3d
+                # 提取真实参数值用于可视化对比
+                true_params = {param: config.ground_truth_params[param] for param in ['D', 'p', 'dKthr', 'A'] if param in config.ground_truth_params}
+                plot_particle_parameters_evolution_3d(os.path.join(config.RESULTS_DIR, 'particle_params.csv'), config.NPARTICLE, save_dir=config.RESULTS_DIR, true_params=true_params)
+
+                # 增加更新计数器
+                update_count += 1
+
+                # 准备输出数据：计算统计量（使用更新后的数据）
                 t_ = self.crack_length_history_CPU.copy()
                 t_.sort(axis=-1)  # 按裂纹长度排序
 
@@ -329,24 +349,10 @@ class CrackGrowth():
                 result_filename = os.path.join(config.RESULTS_DIR, '%s_%d.csv' % (config.MODE, config.load[0]))
                 np.savetxt(result_filename, t, delimiter=',')
 
-                # 执行粒子滤波更新参数
-                self.crack_length_95 = self.check.check()
-
-                # 记录更新后的粒子参数状态
-                self.log_particle_params()
-
-                # 更新参数分布可视化
-                from visualization import plot_particle_parameters_evolution_3d
-                # 提取真实参数值用于可视化对比
-                true_params = {param: config.ground_truth_params[param] for param in ['D', 'p', 'dKthr', 'A'] if param in config.ground_truth_params}
-                plot_particle_parameters_evolution_3d(os.path.join(config.RESULTS_DIR, 'particle_params.csv'), config.NPARTICLE, save_dir=config.RESULTS_DIR, true_params=true_params)
-
-                # 增加更新计数器
-                update_count += 1
-
-                # 绘制当前预测效果
+                # 绘制当前预测效果（传递观测值）
                 filename = os.path.join(config.RESULTS_DIR, '%s_%d.csv' % (config.MODE, config.load[0]))
-                plot_crack_length_prediction(t, filename, update_count)
+                observations = getattr(self.check, 'observation_history', None)
+                plot_crack_length_prediction(t, filename, update_count, observations=observations)
 
                 # 重置超限计数器
                 self.crack_count = 0

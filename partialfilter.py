@@ -144,6 +144,7 @@ class ParticleFilter():
             outindex = np.zeros(config.NPARTICLE, dtype=int)
             for i in range(config.NPARTICLE):
                 # 随机选择一个权重值，找到对应的粒子索引
+
                 outindex[i] = np.where(np.random.rand() <= c)[0][0]
             return outindex
 
@@ -195,8 +196,18 @@ class ParticleFilter():
         # 获取当前检查步数（基于历史记录长度）
         checkstep = len(self.growth.crack_length_history_CPU) - 1
 
-        # 从观测数据插值函数获取当前步的观测裂纹长度
-        check_result = float(self.check_interp_func(checkstep))
+        # 从观测数据插值函数获取当前步的真实裂纹长度
+        true_length = float(self.check_interp_func(checkstep))
+        
+        # 添加高斯噪声，模拟实际观测误差
+        # R 是测量噪声方差，标准差为 sqrt(R)
+        noise = np.random.normal(0, np.sqrt(R))
+        check_result = true_length + noise
+        
+        # 保存带噪声的观测值（用于后续可视化）
+        if not hasattr(self, 'observation_history'):
+            self.observation_history = []
+        self.observation_history.append((checkstep, check_result))
 
         # 确保观测值不小于6mm
         # if check_result < 6:
